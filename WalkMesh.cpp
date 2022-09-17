@@ -46,8 +46,18 @@ WalkMesh::WalkMesh(std::vector<glm::vec3> const& vertices_, std::vector<glm::vec
 // project pt to the plane of triangle a,b,c and return the barycentric weights of the projected point:
 glm::vec3 barycentric_weights(glm::vec3 const& a, glm::vec3 const& b, glm::vec3 const& c, glm::vec3 const& pt)
 {
-    // TODO: implement!
-    return glm::vec3(0.25f, 0.25f, 0.5f);
+    // https://en.wikipedia.org/wiki/Barycentric_coordinate_system
+    // the coordinates of P with respect to triangle ABC are equivalent to the (signed) ratios of the
+    // areas of PBC, PCA and PAB to the area of the reference triangle ABC
+
+    // compute areas of smaller triangles formed with pt
+    const glm::vec3 h = glm::cross(c - a, b - c); // entire triangle formed by {a, b, c}
+    const float BCP = glm::dot(glm::cross(b - pt, c - pt), h); // triangle formed by {b, c, pt}
+    const float ACP = glm::dot(glm::cross(c - pt, a - pt), h); // triangle formed by {a, c, pt}
+    const float ABP = glm::dot(glm::cross(a - pt, b - pt), h); // triangle formed by {a, b, pt}
+
+    // divide by sum to account for constant scale factors and ensure weights sum to 1
+    return glm::vec3(BCP, ACP, ABP) / (BCP + ACP + ABP);
 }
 
 WalkPoint WalkMesh::nearest_walk_point(glm::vec3 const& world_point) const
