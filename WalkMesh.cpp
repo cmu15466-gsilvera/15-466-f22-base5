@@ -165,14 +165,26 @@ bool WalkMesh::cross_edge(WalkPoint const& start, WalkPoint* end_, glm::quat* ro
     glm::uvec2 edge = glm::uvec2(start.indices);
 
     // check if 'edge' is a non-boundary edge:
-    if (edge.x == edge.y /* <-- TODO: use a real check, this is just here so code compiles */) {
+    edge = glm::uvec2(edge.y, edge.x); // why do this?
+    if (next_vertex.find(edge) != next_vertex.end()) { // found in next_vertex
         // it is!
+        const uint32_t other_pt = next_vertex.find(edge)->second; // this should always work since != end()
 
         // make 'end' represent the same (world) point, but on triangle (edge.y, edge.x, [other point]):
-        // TODO
+        end = WalkPoint(
+            glm::vec3(start.indices.y, start.indices.x, other_pt), // new indices
+            glm::vec3(start.weights.y, start.weights.x, start.weights.z) // new weights
+        );
 
         // make 'rotation' the rotation that takes (start.indices)'s normal to (end.indices)'s normal:
-        // TODO
+        const glm::vec3& A = vertices[start.indices.x];
+        const glm::vec3& B = vertices[start.indices.y];
+        const glm::vec3& C = vertices[start.indices.z];
+        const glm::vec3& D = vertices[other_pt]; // next (next) edge
+
+        const glm::vec3 n0 = glm::normalize(glm::cross(A - B, B - C));
+        const glm::vec3 n1 = glm::normalize(glm::cross(B - A, A - D));
+        rotation = glm::rotation(n0, n1);
 
         return true;
     } else {
