@@ -259,8 +259,7 @@ bool WalkMesh::cross_edge(WalkPoint const& start, WalkPoint* end_, glm::quat* ro
 
     // check if 'edge' is a non-boundary edge:
     edge = glm::uvec2(edge.y, edge.x); // why do this?
-    if (next_vertex.find(edge) != next_vertex.end()) { // found in next_vertex
-        // it is!
+    if (next_vertex.find(edge) != next_vertex.end()) { // found in next_vertex (opposite vertex exists in mesh)
         const uint32_t other_pt = next_vertex.find(edge)->second; // this should always work since != end()
 
         // make 'end' represent the same (world) point, but on triangle (edge.y, edge.x, [other point]):
@@ -275,16 +274,16 @@ bool WalkMesh::cross_edge(WalkPoint const& start, WalkPoint* end_, glm::quat* ro
         const glm::vec3& C = vertices[start.indices.z];
         const glm::vec3& D = vertices[other_pt]; // next (next) edge
 
-        const glm::vec3 n0 = glm::normalize(glm::cross(A - B, B - C));
-        const glm::vec3 n1 = glm::normalize(glm::cross(B - A, A - D));
+        const glm::vec3 n0 = glm::normalize(glm::cross(A - B, B - C)); // normal 0 (starting)
+        const glm::vec3 n1 = glm::normalize(glm::cross(B - A, A - D)); // normal 1 (ending)
         rotation = glm::rotation(n0, n1);
 
         return true;
     } else {
         end = start;
         rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-        return false;
     }
+    return false;
 }
 
 WalkMeshes::WalkMeshes(std::string const& filename)
