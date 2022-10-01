@@ -145,12 +145,14 @@ void WalkMesh::walk_in_triangle(WalkPoint const& start, glm::vec3 const& step, W
         step_coords = barycentric_weights(a, b, c, world_point);
     }
 
-    if (step_coords.x >= 0.0f && step_coords.y >= 0.0f && step_coords.z >= 0.0f) {
-        // if no edge is crossed, event will just be taking the whole step:
+    // if no edge is crossed, event will just be taking the whole step:
+    {
         time = 1.0f;
         end = start;
         end.weights = step_coords;
-    } else {
+    }
+
+    if (!(step_coords.x >= 0.0f && step_coords.y >= 0.0f && step_coords.z >= 0.0f)) {
 
         // figure out which edge (if any) is crossed first.
         //  set time and end appropriately.
@@ -254,6 +256,7 @@ bool WalkMesh::cross_edge(WalkPoint const& start, WalkPoint* end_, glm::quat* ro
     assert(rotation_);
     auto& rotation = *rotation_;
 
+    std::cout << "weights: " << glm::to_string(start.weights) << std::endl;
     assert(start.weights.z == 0.0f); //*must* be on an edge.
     glm::uvec2 edge = glm::uvec2(start.indices);
 

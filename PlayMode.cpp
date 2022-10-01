@@ -212,14 +212,14 @@ void PlayMode::update(float elapsed) {
 			player.transform->rotation = glm::normalize(adjust * player.transform->rotation);
 		}
 
-		// /*
+		/*
 		glm::mat4x3 frame = player.camera->transform->make_local_to_parent();
 		glm::vec3 cam_right = frame[0];
 		//glm::vec3 cam_up = frame[1];
 		glm::vec3 cam_forward = -frame[2];
 
 		player.camera->transform->position += move.x * cam_right + move.y * cam_forward;
-		// */
+		*/
 	}
 
 	//reset button press counters:
