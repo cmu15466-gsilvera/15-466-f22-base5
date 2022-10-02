@@ -50,13 +50,13 @@ glm::vec3 barycentric_weights(glm::vec3 const& a, glm::vec3 const& b, glm::vec3 
     // areas of PBC, PCA and PAB to the area of the reference triangle ABC
 
     // compute areas of smaller triangles formed with pt
-    const glm::vec3 h = glm::cross(c - a, b - c); // entire triangle formed by {a, b, c}
-    const float BCP = glm::dot(glm::cross(b - pt, c - pt), h); // triangle formed by {b, c, pt}
-    const float ACP = glm::dot(glm::cross(c - pt, a - pt), h); // triangle formed by {a, c, pt}
-    const float ABP = glm::dot(glm::cross(a - pt, b - pt), h); // triangle formed by {a, b, pt}
+    const glm::vec3 n = glm::normalize(glm::cross(c - a, b - c)); // normal of tri{a, b, c}
+    const float PBC = glm::dot(glm::cross(b - pt, c - pt), n); // triangle formed by {b, c, pt}
+    const float PCA = glm::dot(glm::cross(c - pt, a - pt), n); // triangle formed by {c, a, pt}
+    const float PAB = glm::dot(glm::cross(a - pt, b - pt), n); // triangle formed by {a, b, pt}
 
     // divide by sum to account for constant scale factors and ensure weights sum to 1
-    return glm::vec3(BCP, ACP, ABP) / (BCP + ACP + ABP);
+    return glm::vec3(PBC, PCA, PAB) / (PBC + PCA + PAB);
 }
 
 WalkPoint WalkMesh::nearest_walk_point(glm::vec3 const& world_point) const
@@ -256,12 +256,11 @@ bool WalkMesh::cross_edge(WalkPoint const& start, WalkPoint* end_, glm::quat* ro
     assert(rotation_);
     auto& rotation = *rotation_;
 
-    std::cout << "weights: " << glm::to_string(start.weights) << std::endl;
+    assert(start.indices.x <= vertices.size() && start.indices.y <= vertices.size() && start.indices.z <= vertices.size());
     assert(start.weights.z == 0.0f); //*must* be on an edge.
-    glm::uvec2 edge = glm::uvec2(start.indices);
+    const glm::uvec2 edge = glm::uvec2(start.indices.y, start.indices.x); // looking for opposite vertex to this edge
 
     // check if 'edge' is a non-boundary edge:
-    edge = glm::uvec2(edge.y, edge.x); // why do this?
     if (next_vertex.find(edge) != next_vertex.end()) { // found in next_vertex (opposite vertex exists in mesh)
         const uint32_t other_pt = next_vertex.find(edge)->second; // this should always work since != end()
 
@@ -282,10 +281,10 @@ bool WalkMesh::cross_edge(WalkPoint const& start, WalkPoint* end_, glm::quat* ro
         rotation = glm::rotation(n0, n1);
 
         return true;
-    } else {
-        end = start;
-        rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     }
+
+    end = start;
+    rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     return false;
 }
 
