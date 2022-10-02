@@ -152,99 +152,71 @@ void WalkMesh::walk_in_triangle(WalkPoint const& start, glm::vec3 const& step, W
         end.weights = step_coords;
     }
 
+    // figure out which edge (if any) is crossed first.
+    //  set time and end appropriately.
+
+    // this condition ensures an edge was crossed
     if (!(step_coords.x >= 0.0f && step_coords.y >= 0.0f && step_coords.z >= 0.0f)) {
+        // from: https://15466.courses.cs.cmu.edu/lesson/walkmesh
+        // A particularly elegant way to write walk_in_triangle is to convert step into a "barycentric velocity", v.
+        // This reduces the problem to checking when/if the motion of the original weights, w, under the velocity, v,
+        // reaches a triangle edge. That is, checking for the earliest t that brings some weight in w + tv to zero.
 
-        // figure out which edge (if any) is crossed first.
-        //  set time and end appropriately.
-        // check triangle vertices and edges:
-        float closest_dis2 = std::numeric_limits<float>::infinity(); // to only update end to closest edge-pt
-        auto check_edge = [&world_point, &time, &world_start, &end, &closest_dis2, this](uint32_t ai, uint32_t bi, uint32_t ci) {
-            glm::vec3 const& a = vertices[ai];
-            glm::vec3 const& b = vertices[bi];
-            glm::vec3 const& c = vertices[ci];
+        glm::vec3 barycentric_velocity;
+        {
+            // this is barycentric velocity bc velocity = X + t*V, and X = start.weights, then since the "end" weights
+            // for end should be step_coords then end @ t == 1 should be still step_coords, therefore the "end" weights
+            // should be start.weights + time * (velocity) => velocity = (step_coords - start.weights) so t == 1 => step_coords
+            barycentric_velocity = step_coords - start.weights;
+            // sum of barycentric velocity should equal 0 (sum(step_coords)==1 - sum(start.weights)==1)
+            assert(std::fabs(barycentric_velocity.x + barycentric_velocity.y + barycentric_velocity.z) <= 0.001f);
+        }
 
-            // find closest point on line segment ab:
-            glm::vec3 pt;
-            glm::vec3 coords;
-
-            const glm::vec3 norm = glm::cross(b - a, c - a); // normal of triangle
-            const glm::vec3 world_dir = world_point - world_start;
-            auto proj = [](const glm::vec3& u, const glm::vec3& v) -> glm::vec3 {
-                return (glm::dot(u, v) / glm::length2(v)) * v;
-            };
-            // project world_dir onto triangle (subtract component in normal dir)
-            const glm::vec3 world_dir_proj = world_dir - proj(world_dir, norm);
-            const glm::vec3 world_end = world_start + world_dir_proj;
-
-            // early out test if the line segments don't cross
-            {
-                // the walk_point + step does not cross the edge formed by a, b
-                if (glm::dot(glm::cross(b - a, world_end - a), glm::cross(b - a, world_start - a)) > 0)
-                    return; // early out for edges that don't get crossed
-            }
-
-            // compute intersection point
-            {
-                // Recall that a 'line' can be defined as (L = origin(0) + t * direction(Dir)) for some t
-
-                // Calculating shortest line segment intersecting both lines
-                // Implementation sourced from http://paulbourke.net/geometry/pointlineplane/
-                const glm::vec3& L0 = world_start;
-                const glm::vec3& LDir = world_dir_proj;
-                const glm::vec3& R0 = a;
-                const glm::vec3 RDir = (b - a);
-
-                const glm::vec3 L0R0 = L0 - R0; // segment between L origin and R origin
-
-                // Calculating dot-product equation to find perpendicular shortest-line-segment
-                const float d1343 = L0R0.x * RDir.x + L0R0.y * RDir.y + L0R0.z * RDir.z;
-                const float d4321 = RDir.x * LDir.x + RDir.y * LDir.y + RDir.z * LDir.z;
-                const float d1321 = L0R0.x * LDir.x + L0R0.y * LDir.y + L0R0.z * LDir.z;
-                const float d4343 = RDir.x * RDir.x + RDir.y * RDir.y + RDir.z * RDir.z;
-                const float d2121 = LDir.x * LDir.x + LDir.y * LDir.y + LDir.z * LDir.z;
-                const float denom = d2121 * d4343 - d4321 * d4321;
-                if (std::fabs(denom) < 0.00001f) // else no intersection
-                    return;
-                const float numer = d1343 * d4321 - d1321 * d4343;
-
-                // calculate scalars (mu) that scale the unit direction XDir to reach the desired points
-                const float muL = numer / denom; // variable scale of direction vector for LEFT ray
-                const float muR = (d1343 + d4321 * (muL)) / d4343; // variable scale of direction vector for RIGHT ray
-
-                // calculate the points on the respective rays that create the intersecting line
-                const glm::vec3 ptL = L0 + muL * LDir; // the point on the Left ray
-                const glm::vec3 ptR = R0 + muR * RDir; // the point on the Right ray
-
-                // calculate the vector between the middle of the two endpoints and return its magnitude
-                pt = (ptL + ptR) / 2.0f; // middle point between two endpoints of shortest-line-segment
-            }
-
-            // compute the weights
-            {
-                // Remember: our convention is that when a WalkPoint is on an edge,
-                //  then wp.weights.z == 0.0f (so will likely need to re-order the indices)
-                float amt = glm::length2(pt - a) / glm::length2(b - a);
-                if (amt < 0.f || amt > 1.f)
-                    return; // early out for invalid barycentric coords
-                coords = glm::vec3(1.0f - amt, amt, 0.0f);
-            }
-
-            // update end/time appropriately
-            {
-                float dis2 = glm::dot(pt - world_start, world_end - world_start); // smallest dot
-                if (dis2 < closest_dis2) {
-                    closest_dis2 = dis2;
-                    time = glm::length(pt - world_start) / glm::length(world_point - world_start);
-                    // end is the point on the edge
-                    end.indices = glm::uvec3(ai, bi, ci);
-                    end.weights = coords;
+        // find the earliest time t (and associated component)
+        int over_idx; // find the index of the velocity component that is over the triangle bounds
+        {
+            auto check_vel_component = [&time, &over_idx, &barycentric_velocity, &start](int component_idx) {
+                if (barycentric_velocity[component_idx] < 0) { // crossing over in vel[component_idx] direction
+                    // want t s.t. w + t * v == 0
+                    // => t = -w / v
+                    float t = -start.weights[component_idx] / barycentric_velocity[component_idx];
+                    if (0 <= t && t < time && t < 1.f) {
+                        time = t;
+                        over_idx = component_idx;
+                    }
                 }
-            }
-        };
+            };
+            // check the x, y, z components of velocity to find the earliest t bringing w + tv == 0
+            check_vel_component(0);
+            check_vel_component(1);
+            check_vel_component(2);
+        }
+        assert(0.f <= time && time <= 1.f);
+        assert(0 <= over_idx && over_idx < 3); // can be only 0, 1, 2
 
-        check_edge(start.indices.x, start.indices.y, start.indices.z);
-        check_edge(start.indices.y, start.indices.z, start.indices.x);
-        check_edge(start.indices.z, start.indices.x, start.indices.y);
+        // the endpt maintains the same indices, and the weights correspond to the new barycentric position
+        // but we'll need to clamp the z weight to 0 so its always on an edge
+        end = WalkPoint(start.indices, start.weights + time * barycentric_velocity);
+
+        // Remember: our convention is that when a WalkPoint is on an edge,
+        // then wp.weights.z == 0.0f (so will likely need to re-order the indices)
+        {
+            if (over_idx == 0) {
+                // velocity.x < 0 => crossing boundary in x axis (edge weight == 0)
+                end.indices = glm::uvec3(end.indices.y, end.indices.z, end.indices.x);
+                end.weights = glm::vec3(end.weights.y, end.weights.z, 0.f);
+            } else if (over_idx == 1) {
+                // velocity.y < 0 => crossing boundary in y axis (edge weight == 0)
+                end.indices = glm::uvec3(end.indices.z, end.indices.x, end.indices.y);
+                end.weights = glm::vec3(end.weights.z, end.weights.x, 0.f);
+            } else if (over_idx == 2) {
+                // velocity.z < 0 => crossing boundary in z axis (edge weight == 0)
+                end.indices = glm::uvec3(end.indices.x, end.indices.y, end.indices.z);
+                end.weights = glm::vec3(end.weights.x, end.weights.y, 0.f);
+            } else {
+                throw std::runtime_error("Unable to re-order indices!");
+            }
+        }
     }
 }
 
